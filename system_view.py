@@ -17,14 +17,12 @@ import scene_graph as sg
 import easy_shaders as es
 
 
-# A class to store the application control
-class Controller:
-    def __init__(self):
-        self.fillPolygon = True
+def jsonLector():
+    with open(sys.argv[1]) as f:
+        archivo = json.load(f)
+    return archivo
 
-# global controller as communication with the callback function
-controller = Controller()
-
+#Comienzo de la estructura recursiva
 class World(object):
     def __init__(self):
         self.color = []
@@ -73,6 +71,7 @@ class World(object):
     def getSatellites(self):
         return self.satellites
 
+#interacción
 def on_key(window, key, scancode, action, mods):
 
     if action != glfw.PRESS:
@@ -88,15 +87,6 @@ def on_key(window, key, scancode, action, mods):
 
     else:
         print('Unknown key')
-
-def jsonLector():
-        with open('bodies.json') as f:
-            archivo = json.load(f)
-        return archivo
-
-sp = jsonLector()
-sol = World()
-sol.setParams(sp, None)
 
 
 #sacado de ex_scene_graph
@@ -120,6 +110,7 @@ def createColorCircle(N, R, r, g, b):
     indices += [0, N, 1]
     return bs.Shape(vertices, indices)
 
+#adaptado para crear circunferencias
 def createColorCircumference(N, R, r, g, b):
     vertices = []
     indices = []
@@ -129,29 +120,33 @@ def createColorCircumference(N, R, r, g, b):
         vertices += [
             # vertex coordinates
             R * np.cos(theta), R * np.sin(theta), 0, r, g, b]
-        indices += [i, (i + 2) % N, (i + 4) % N]
+        indices += [i, (i + 2)%N, (i + 4)%N]
     return bs.Shape(vertices, indices)
 
+
+#create scene graph
 listSatellitesName = []
-def createCircle(world):
+def createSceneGraph(world):
     world: World
     # basic GPUShapes
-    gpuCircleColor = es.toGPUShape(createColorCircle(50, 1, world.getColor()[0], world.getColor()[1], world.getColor()[2]))
-    gpuCircumferenceColor = es.toGPUShape(createColorCircumference(70, 1, 0.5, 0.5, 0.5))
+    gpuCircleColor = es.toGPUShape(createColorCircle(100, 1, world.getColor()[0], world.getColor()[1], world.getColor()[2]))
 
-    orbit = sg.SceneGraphNode("orbit")
     #orbit
 
     # Body
-    planet = sg.SceneGraphNode("planetBody")
+    planet = sg.SceneGraphNode("planet")
     planet.transform = tr.uniformScale(world.getRadius())
     planet.childs = [gpuCircleColor]
 
 
     listSatellites = []
-    if world.satellites != None:
-        for s in world.satellites:
+    if world.getSatellites() != None:
+        orbit = sg.SceneGraphNode("orbit")
+        listSatellites.append(orbit)
+        for s in world.getSatellites():
             s: World
+            gpuCircumferenceColor = es.toGPUShape(createColorCircumference(70, 1, 0.5, 0.5, 0.5))
+
             new_orbit = sg.SceneGraphNode("new_orbit")
             new_orbit.transform = tr.uniformScale(world.getRadius() + s.getDistance() + s.getRadius())
             new_orbit.childs += [gpuCircumferenceColor]
@@ -159,7 +154,7 @@ def createCircle(world):
 
             satellite = sg.SceneGraphNode("satellite")
             satellite.transform = tr.translate(s.getDistance() + s.getPradius() + s.getRadius(), 0, 0)
-            satellite.childs += [createCircle(s)]
+            satellite.childs += [createSceneGraph(s)]
 
             name = "luna" + str(r.random())
             velocity = s.getVelocity()
@@ -173,14 +168,28 @@ def createCircle(world):
 
     # Snowman, the one and only
     planetary = sg.SceneGraphNode("planetary")
-    planetary.childs = [orbit, planet]
+    planetary.childs += [planet]
     for i in listSatellites:
         planetary.childs += [i]
 
     return planetary
 
 
+# A class to store the application control
+class Controller:
+    def __init__(self):
+        self.fillPolygon = True
+
+# global controller as communication with the callback function
+controller = Controller()
+
+#inicio del programa
 if __name__ == "__main__":
+
+
+    sp = jsonLector()
+    sol = World()
+    sol.setParams(sp, None)
 
     # Initialize glfw
     if not glfw.init():
@@ -213,7 +222,7 @@ if __name__ == "__main__":
     glClearColor(0.55, 0.55, 0.85, 1.0)
 
     # Creating shapes on GPU memory
-    world= createCircle(sol)
+    world= createSceneGraph(sol)
 
 
     # Our shapes here are always fully painted
@@ -233,18 +242,21 @@ if __name__ == "__main__":
         # Clearing the screen in both, color and depth
         glClear(GL_COLOR_BUFFER_BIT)
 
+        #update of satellites rotation in time
         for i in listSatellitesName:
             new_node = sg.findNode(world, i[0])
             theta = i[1] * glfw.get_time()
             new_node.transform = tr.rotationZ(theta)
 
+        #set texture
         glUseProgram(pipeline2.shaderProgram)
 
         glUniformMatrix4fv(glGetUniformLocation(pipeline.shaderProgram, "transform"), 1, GL_TRUE, tr.uniformScale(2))
         pipeline2.drawShape(gpuShape)
 
+        # Drawing the Sistem
         glUseProgram(pipeline.shaderProgram)
-        # Drawing the Car
+
         sg.drawSceneGraphNode(world, pipeline, "transform")
 
         # Once the render is done, buffers are swapped, showing only the complete scene.
